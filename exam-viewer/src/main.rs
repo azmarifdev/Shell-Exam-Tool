@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -73,7 +73,7 @@ fn run_command(args: Args) -> Result<()> {
             let data = decryptor.decrypt(&password)?;
             
             println!("Generating session report...");
-            let analyzer = Analyzer::new(&data);
+            let analyzer = Analyzer::new(data);
             let report = analyzer.analyze()?;
             
             let reporter = Reporter::new();
@@ -87,7 +87,7 @@ fn run_command(args: Args) -> Result<()> {
             let password = rpassword::prompt_password("Enter decryption password: ")?;
             let data = decryptor.decrypt(&password)?;
             
-            let analyzer = Analyzer::new(&data);
+            let analyzer = Analyzer::new(data);
             let report = analyzer.analyze()?;
             
             let reporter = Reporter::new();
@@ -116,7 +116,7 @@ fn run_command(args: Args) -> Result<()> {
             let password = rpassword::prompt_password("Enter decryption password: ")?;
             let data = decryptor.decrypt(&password)?;
             
-            let analyzer = Analyzer::new(&data);
+            let analyzer = Analyzer::new(data);
             let report = analyzer.analyze()?;
             
             let reporter = Reporter::new();

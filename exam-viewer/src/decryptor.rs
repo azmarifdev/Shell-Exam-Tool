@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
-use serde_json::Value;
 
 use crate::analyzer::DecryptedData;
 

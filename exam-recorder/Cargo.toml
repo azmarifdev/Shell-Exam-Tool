@@ -20,7 +20,7 @@ rand = "0.8"
 zip = "0.6"
 sha2 = "0.10"
 hex = "0.4"
-nix = "0.28"
+nix = { version = "0.28", features = ["term", "process", "poll", "fs"] }
 libc = "0.2"
 termios = "0.3"
 chrono = { version = "0.4", features = ["serde"] }

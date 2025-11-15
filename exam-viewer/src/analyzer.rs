@@ -1,6 +1,5 @@
 use anyhow::Result;
 use serde_json::Value;
-use chrono::{DateTime, Utc, NaiveDateTime};
 
 pub struct DecryptedData {
     pub events: Value,
@@ -181,8 +180,9 @@ fn format_duration(seconds: u64) -> String {
 }
 
 fn format_timestamp(timestamp_ms: u64) -> String {
+    use chrono::DateTime;
     let timestamp_secs = timestamp_ms / 1000;
-    if let Some(dt) = NaiveDateTime::from_timestamp_opt(timestamp_secs as i64, 0) {
+    if let Some(dt) = DateTime::from_timestamp(timestamp_secs as i64, 0) {
         dt.format("%H:%M:%S").to_string()
     } else {
         format!("{}", timestamp_ms)

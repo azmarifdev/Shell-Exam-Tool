@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use std::collections::VecDeque;
 use std::io::{Read, Write};
+use std::os::fd::RawFd;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
@@ -113,8 +114,8 @@ impl Recorder {
     }
     
     pub fn start(&mut self) -> Result<()> {
-        use std::os::unix::io::{AsRawFd, RawFd};
-        use nix::pty::{openpty, Pty};
+        use std::os::unix::io::AsRawFd;
+        use nix::pty::openpty;
         use nix::unistd::{fork, ForkResult, execvp, dup2, close};
         use nix::sys::wait::waitpid;
         use std::ffi::CString;
@@ -165,11 +166,11 @@ impl Recorder {
     }
     
     fn record_from_master(&mut self, master_fd: RawFd) -> Result<()> {
-        use std::os::unix::io::RawFd;
-        use std::os::unix::io::FromRawFd;
+        use std::os::unix::io::{FromRawFd, AsFd};
         
         let mut master_file = unsafe { std::fs::File::from_raw_fd(master_fd) };
-        let mut stdin = std::io::stdin();
+        let stdin_handle = std::io::stdin();
+        let mut stdin = stdin_handle.lock();
         
         // Set terminal to raw mode
         let original_termios = self.set_raw_mode()?;
@@ -178,60 +179,70 @@ impl Recorder {
         use nix::poll::{poll, PollFd, PollFlags};
         
         let result = loop {
+            let stdin_fd = stdin.as_fd();
+            let master_fd_borrowed = master_file.as_fd();
+            
             let mut poll_fds = vec![
-                PollFd::new(0, PollFlags::POLLIN), // stdin
-                PollFd::new(master_fd, PollFlags::POLLIN), // master PTY
+                PollFd::new(stdin_fd, PollFlags::POLLIN), // stdin
+                PollFd::new(master_fd_borrowed, PollFlags::POLLIN), // master PTY
             ];
             
-            match poll(&mut poll_fds, 100) {
+            match poll(&mut poll_fds, 100u16) {
                 Ok(0) => continue, // Timeout
                 Ok(_) => {}
                 Err(nix::errno::Errno::EINTR) => continue,
-                Err(e) => break Err(e.into()),
+                Err(e) => break Err(anyhow::anyhow!("Poll error: {}", e)),
             }
             
+            // Extract revents before using master_file mutably
+            let stdin_ready = poll_fds[0].revents()
+                .map(|r| r.contains(PollFlags::POLLIN))
+                .unwrap_or(false);
+            let master_ready = poll_fds[1].revents()
+                .map(|r| r.contains(PollFlags::POLLIN))
+                .unwrap_or(false);
+            
+            // Drop poll_fds so we can use master_file mutably
+            drop(poll_fds);
+            
             // Read from stdin (user input)
-            if let Some(revents) = poll_fds[0].revents() {
-                if revents.contains(PollFlags::POLLIN) {
-                    let mut buffer = [0u8; 4096];
-                    match stdin.read(&mut buffer) {
-                        Ok(0) => break Ok(()), // EOF
-                        Ok(n) => {
-                            let data = &buffer[..n];
-                            self.process_input(data)?;
-                            
-                            // Forward to master PTY
-                            master_file.write_all(data)?;
-                            master_file.flush()?;
-                            
-                            // Check for exit command after processing
-                            if self.should_exit() {
-                                break Ok(());
-                            }
+            if stdin_ready {
+                let mut buffer = [0u8; 4096];
+                match stdin.read(&mut buffer) {
+                    Ok(0) => break Ok(()), // EOF
+                    Ok(n) => {
+                        let data = &buffer[..n];
+                        self.process_input(data)?;
+                        
+                        // Forward to master PTY
+                        master_file.write_all(data)?;
+                        master_file.flush()?;
+                        
+                        // Check for exit command after processing
+                        if self.should_exit() {
+                            break Ok(());
                         }
-                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
-                        Err(e) => break Err(e.into()),
                     }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+                    Err(e) => break Err(e.into()),
                 }
             }
             
             // Read from master PTY (terminal output)
-            if let Some(revents) = poll_fds[1].revents() {
-                if revents.contains(PollFlags::POLLIN) {
-                    let mut buffer = [0u8; 4096];
-                    match master_file.read(&mut buffer) {
-                        Ok(0) => break Ok(()), // EOF
-                        Ok(n) => {
-                            let data = &buffer[..n];
-                            self.terminal_output.extend_from_slice(data);
-                            
-                            // Forward to stdout
-                            std::io::stdout().write_all(data)?;
-                            std::io::stdout().flush()?;
-                        }
-                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
-                        Err(e) => break Err(e.into()),
+            if master_ready {
+                let mut buffer = [0u8; 4096];
+                match master_file.read(&mut buffer) {
+                    Ok(0) => break Ok(()), // EOF
+                    Ok(n) => {
+                        let data = &buffer[..n];
+                        self.terminal_output.extend_from_slice(data);
+                        
+                        // Forward to stdout
+                        std::io::stdout().write_all(data)?;
+                        std::io::stdout().flush()?;
                     }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+                    Err(e) => break Err(e.into()),
                 }
             }
         };
@@ -372,7 +383,7 @@ impl Recorder {
         // IMPORTANT: Change this password before production use!
         // See CONFIGURATION.md for instructions on changing the instructor password.
         // This password is used to encrypt all exam log files.
-        let instructor_password = "instructor_password_change_me";
+        let instructor_password = "linuxisawesome";
         
         let events_enc = encrypt_file(events_json.as_bytes(), instructor_password)?;
         let summary_enc = encrypt_file(summary_json.as_bytes(), instructor_password)?;

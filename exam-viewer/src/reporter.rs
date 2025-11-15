@@ -3,7 +3,7 @@ use std::fs;
 use std::path::Path;
 use colored::*;
 
-use crate::analyzer::{AnalysisReport, SuspiciousActivity};
+use crate::analyzer::AnalysisReport;
 
 pub struct Reporter;
 
