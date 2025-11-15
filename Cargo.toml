@@ -1,0 +1,12 @@
+[workspace]
+members = ["exam-recorder", "exam-viewer"]
+resolver = "2"
+
+[workspace.package]
+version = "1.0.0"
+authors = ["A. Z. M. Arif <https://azmarif.dev>"]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/azmarif/exam-recorder-suite"
+homepage = "https://azmarif.dev"
+

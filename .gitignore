@@ -1,0 +1,12 @@
+target/
+Cargo.lock
+*.zip
+*.deb
+*.rpm
+*.tar.gz
+deb-build/
+rpm-build/
+tar-build/
+*.log
+.DS_Store
+
